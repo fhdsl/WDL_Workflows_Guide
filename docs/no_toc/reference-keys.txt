@@ -3,4 +3,8 @@ curriculum
 introduction-to-wdl
 defining-a-workflow-plan-introduce-somatic-mutation-calling-workflow
 the-first-task
+runtime-attributes
+command-section
+heredoc-style-syntax-versus-braces-syntax
+sep-versus-sep
 references

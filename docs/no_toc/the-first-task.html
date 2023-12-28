@@ -78,7 +78,15 @@
 </ul></li>
 <li class="chapter" data-level="1" data-path="introduction-to-wdl.html"><a href="introduction-to-wdl.html"><i class="fa fa-check"></i><b>1</b> Introduction to WDL</a></li>
 <li class="chapter" data-level="2" data-path="defining-a-workflow-plan-introduce-somatic-mutation-calling-workflow.html"><a href="defining-a-workflow-plan-introduce-somatic-mutation-calling-workflow.html"><i class="fa fa-check"></i><b>2</b> Defining a workflow plan: Introduce somatic mutation calling workflow</a></li>
-<li class="chapter" data-level="3" data-path="the-first-task.html"><a href="the-first-task.html"><i class="fa fa-check"></i><b>3</b> The first task</a></li>
+<li class="chapter" data-level="3" data-path="the-first-task.html"><a href="the-first-task.html"><i class="fa fa-check"></i><b>3</b> The first task</a>
+<ul>
+<li class="chapter" data-level="3.1" data-path="the-first-task.html"><a href="the-first-task.html#runtime-attributes"><i class="fa fa-check"></i><b>3.1</b> Runtime attributes</a></li>
+<li class="chapter" data-level="3.2" data-path="the-first-task.html"><a href="the-first-task.html#command-section"><i class="fa fa-check"></i><b>3.2</b> Command section</a>
+<ul>
+<li class="chapter" data-level="3.2.1" data-path="the-first-task.html"><a href="the-first-task.html#heredoc-style-syntax-versus-braces-syntax"><i class="fa fa-check"></i><b>3.2.1</b> Heredoc-style syntax versus braces syntax</a></li>
+<li class="chapter" data-level="3.2.2" data-path="the-first-task.html"><a href="the-first-task.html#sep-versus-sep"><i class="fa fa-check"></i><b>3.2.2</b> <code>sep=</code> versus <code>sep()</code></a></li>
+</ul></li>
+</ul></li>
 <li class="chapter" data-level="" data-path="about-the-authors.html"><a href="about-the-authors.html"><i class="fa fa-check"></i>About the Authors</a></li>
 <li class="chapter" data-level="4" data-path="references.html"><a href="references.html"><i class="fa fa-check"></i><b>4</b> References</a></li>
 <li class="divider"></li>
@@ -117,7 +125,121 @@
 </div>
 <div id="the-first-task" class="section level1" number="3">
 <h1><span class="header-section-number">Chapter 3</span> The first task</h1>
+<div id="runtime-attributes" class="section level2" number="3.1">
+<h2><span class="header-section-number">3.1</span> Runtime attributes</h2>
+<p>The runtime attributes of a task tell the WDL executor important information about how to run the task. These attributes are often specific to particular backends, so we won’t go over all of them here, but here are some of the most common ones:</p>
+<table>
+<colgroup>
+<col width="5%" />
+<col width="34%" />
+<col width="12%" />
+<col width="12%" />
+<col width="34%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Attribute</th>
+<th>Fred Hutch HPC</th>
+<th>Local Cromwell</th>
+<th>Local miniwdl</th>
+<th>Terra</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>bootDiskSizeGB</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>cpu</td>
+<td>Reserve this many cores (acts as a maximum)</td>
+<td>n/a</td>
+<td></td>
+<td>Request a minimum of this many cores (scales with memory)</td>
+</tr>
+<tr class="odd">
+<td>disks</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>docker</td>
+<td>Run the task in this Docker image</td>
+<td>Run the task in this Docker image</td>
+<td>Run the task in this Docker image</td>
+<td>Run the task in this Docker image</td>
+</tr>
+<tr class="odd">
+<td>maxRetries</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>memory</td>
+<td>Maximum amount of memory to use</td>
+<td>n/a</td>
+<td></td>
+<td>Minimum amount of memory to use (scales with CPU)</td>
+</tr>
+<tr class="odd">
+<td>preemptible</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>Attempt running on a preemptible instance this many times, then switch to a non-preemptible</td>
+</tr>
+<tr class="even">
+<td>walltime</td>
+<td>How much <a href="https://en.wikipedia.org/wiki/Elapsed_real_time">walltime</a> to request for a task</td>
+<td>n/a</td>
+<td>n/a</td>
+<td>n/a</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="command-section" class="section level2" number="3.2">
+<h2><span class="header-section-number">3.2</span> Command section</h2>
+<p>The command section of a WDL task is a bash script that will be run by the WDL executor. If a <code>docker</code> runtime attribute is specified, it will execute this bash script in that Docker image, otherwise, it will generally execute the bash script in a generic Ubuntu image.</p>
+<div id="heredoc-style-syntax-versus-braces-syntax" class="section level3" number="3.2.1">
+<h3><span class="header-section-number">3.2.1</span> Heredoc-style syntax versus braces syntax</h3>
+<p>You may see WDLs that use this notation for the command section in a task:</p>
+<p>task do_something {
+input {
+String some_string
+}
+command {
+some_other_string=“FOO”
+echo ${some_string}
+echo $some_other_string
+}
+}</p>
+<p>We recommend using heredoc-style syntax instead:
+task do_something {
+input {
+String some_string
+}
+command &lt;&lt;&lt;
+some_other_string=“FOO”
+echo ~{some_string}
+echo $some_other_string
+&gt;&gt;&gt;
+}</p>
+<p>Heredoc-style syntax for command sections can be clearer than the alternative, as it makes a clearer distinction between bash variables and WDL variables. This is especially helpful for complicated bash scripts. Heredoc-style syntax is also what the WDL 1.1 spec recommends using in most cases. However, the older non-heredoc style is still perfectly functional for a lot of use cases.</p>
+</div>
+<div id="sep-versus-sep" class="section level3" number="3.2.2">
+<h3><span class="header-section-number">3.2.2</span> <code>sep=</code> versus <code>sep()</code></h3>
+<p>The WDL 1.1 spec added a new built-in function, <code>sep()</code>, which replaces the <code>sep=</code> expression placeholder for arrays. This same version of the spec also notes that the <code>sep=</code> expression placeholder <a href="https://github.com/openwdl/wdl/blob/main/versions/1.1/SPEC.md#-expression-placeholder-options">are deprecated and will be removed from future versions of WDL</a>. Unfortunately, as of writing, many users are locked into using WDL 1.0 due to one of the most popular WDL executors not yet supporting WDL 1.1. For the time being, we recommend sticking with <code>sep=</code> as it is compatiable with both WDL 1.0 and WDL 1.1, even though it is technically deprecated in WDL 1.1.</p>
 
+</div>
+</div>
 </div>
 <hr>
 <center> 
