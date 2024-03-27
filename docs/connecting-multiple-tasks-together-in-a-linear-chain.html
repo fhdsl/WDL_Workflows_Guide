@@ -241,7 +241,7 @@
     File analysisReadySorted = &quot;~{base_file_name}.sorted_query_aligned.bam&quot;
   }</code></pre>
 <p>The File variables <code>analysisReadyBam</code> and <code>analysisReadySorted</code> can now be accessed anywhere in the workflow block after the <code>BwaMem</code> task as <code>BwaMem.analysisReadyBam</code> and <code>BwaMem.analysisReadySorted</code>, respectively. Therefore, when we call the <code>MarkDuplicates</code> task, we can pass it the input <code>BwaMem.analysisReadySorted</code> from the <code>BwaMem</code> task:</p>
-<pre><code>workflow minidata_mutation_calling_v1 {
+<pre><code>workflow mutation_calling {
   input {
     # Sample info
     File sampleFastq
@@ -256,7 +256,8 @@
     File ref_sa
   }
     
-  # Map reads to reference
+
+  #  Map reads to reference
   call BwaMem {
     input:
       input_fastq = sampleFastq,
@@ -269,7 +270,7 @@
       ref_pac = ref_pac,
       ref_sa = ref_sa
   }
-  
+   
   call MarkDuplicates {
     input:
       input_bam = BwaMem.analysisReadySorted
@@ -374,7 +375,7 @@ To see other examples of linear chain and variations, see <a href="https://docs.
 <p>We build out the rest of the tasks in a very similar fashion. Tasks <code>ApplyBaseRecalibrator</code> and <code>Mutect2TumorOnly</code> both have files that need to be localized, but otherwise all the tasks have a very similar form as <code>BwaMem</code> and <code>MarkDuplicates</code>. For this current iteration, we use only the tumor sample for mutation calling. In the following chapters, we will use additional WDL features to make use of tumor and normal samples for mutation calling.</p>
 <pre><code>version 1.0
 
-workflow minidata_mutation_calling_v1 {
+workflow mutation_calling {
   input {
     # Sample info
     File sampleFastq
@@ -387,16 +388,18 @@ workflow minidata_mutation_calling_v1 {
     File ref_bwt
     File ref_pac
     File ref_sa
+    String ref_name
+
     File dbSNP_vcf
     File dbSNP_vcf_index
     File known_indels_sites_VCFs
     File known_indels_sites_indices
+
     File af_only_gnomad
     File af_only_gnomad_index
-    File annovarTAR
+
     String annovar_protocols
     String annovar_operation
-    String ref_name
   }
     
   # Map reads to reference
@@ -446,7 +449,6 @@ workflow minidata_mutation_calling_v1 {
       input:
         input_vcf = Mutect2TumorOnly.output_vcf,
         ref_name = ref_name,
-        annovarTAR = annovarTAR,
         annovar_operation = annovar_operation,
         annovar_protocols = annovar_protocols
     }
@@ -463,7 +465,33 @@ workflow minidata_mutation_calling_v1 {
     File Mutect_AnnotatedVcf = annovar.output_annotated_vcf
     File Mutect_AnnotatedTable = annovar.output_annotated_table
   }
+
+  parameter_meta {
+    sampleFastq: &quot;Sample tumor .fastq (expects Illumina)&quot;
+
+    ref_fasta: &quot;Reference genome to align reads to&quot;
+    ref_fasta_index: &quot;Reference genome index file (created by bwa index)&quot;
+    ref_dict: &quot;Reference genome dictionary file (created by bwa index)&quot;
+    ref_amb: &quot;Reference genome non-ATCG file (created by bwa index)&quot;
+    ref_ann: &quot;Reference genome ref seq annotation file (created by bwa index)&quot;
+    ref_bwt: &quot;Reference genome binary file (created by bwa index)&quot;
+    ref_pac: &quot;Reference genome binary file (created by bwa index)&quot;
+    ref_sa: &quot;Reference genome binary file (created by bwa index)&quot;
+    ref_name: &quot;Reference genome name (hg19, hg37, etc.)&quot;
+
+    dbSNP_vcf: &quot;dbSNP VCF for mutation calling&quot;
+    dbSNP_vcf_index: &quot;dbSNP VCF index&quot;
+    known_indels_sites_VCFs: &quot;Known indel site VCF for mutation calling&quot;
+    known_indels_sites_indices: &quot;Known indel site VCF indicies&quot;
+    af_only_gnomad: &quot;gnomAD population allele fraction for mutation calling&quot;
+    af_only_gnomad_index: &quot;gnomAD population allele fraction index&quot;
+
+    annovar_protocols: &quot;annovar protocols: see https://annovar.openbioinformatics.org/en/latest/user-guide/startup&quot;
+    annovar_operation: &quot;annovar operation: see https://annovar.openbioinformatics.org/en/latest/user-guide/startup&quot;
+  }
 }
+
+
 
 
 
@@ -517,7 +545,7 @@ task BwaMem {
   runtime {
     memory: &quot;48 GB&quot;
     cpu: 16
-    docker: &quot;fredhutch/bwa:0.7.17&quot;
+    docker: &quot;ghcr.io/getwilds/bwa:0.7.17&quot;
   }
 }
 
@@ -540,7 +568,7 @@ task MarkDuplicates {
   &gt;&gt;&gt;
 
   runtime {
-    docker: &quot;broadinstitute/gatk:4.1.4.0&quot;
+    docker: &quot;ghcr.io/getwilds/gatk:4.3.0.0&quot;
     memory: &quot;48 GB&quot;
     cpu: 4
   }
@@ -617,7 +645,7 @@ task ApplyBaseRecalibrator {
   runtime {
     memory: &quot;36 GB&quot;
     cpu: 2
-    docker: &quot;broadinstitute/gatk:4.1.4.0&quot;
+    docker: &quot;ghcr.io/getwilds/gatk:4.3.0.0&quot;
   }
 }
 
@@ -664,7 +692,7 @@ command &lt;&lt;&lt;
 &gt;&gt;&gt;
 
 runtime {
-    docker: &quot;broadinstitute/gatk:4.1.4.0&quot;
+    docker: &quot;ghcr.io/getwilds/gatk:4.3.0.0&quot;
     memory: &quot;24 GB&quot;
     cpu: 1
   }
@@ -684,7 +712,6 @@ task annovar {
   input {
   File input_vcf
   String ref_name
-  File annovarTAR
   String annovar_protocols
   String annovar_operation
 }
@@ -693,7 +720,6 @@ task annovar {
   command &lt;&lt;&lt;
   set -eo pipefail
   
-  tar -xzvf ~{annovarTAR}
   
   perl annovar/table_annovar.pl ~{input_vcf} annovar/humandb/ \
     -buildver ~{ref_name} \
@@ -704,7 +730,7 @@ task annovar {
     -nastring . -vcfinput
 &gt;&gt;&gt;
   runtime {
-    docker : &quot;perl:5.28.0&quot;
+    docker : &quot;ghcr.io/getwilds/annovar:${ref_name}&quot;
     cpu: 1
     memory: &quot;2GB&quot;
   }
