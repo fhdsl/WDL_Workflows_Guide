@@ -1,100 +1,3 @@
-```{r, include = FALSE}
-ottrpal::set_knitr_image_path()
-```
-
-# Task Aliasing
-
-We've already gone over running a task multiple times in the context of scattered tasks. However, you may also want a task to run more than one time if that task is to run on multiple sets of inputs. In our case, we want to run a similar analysis on tumor samples and samples taken from normal tissue.
-
-WDL has a sophisticated feature that allows one to reuse the same task repeatedly through your workflow: **task aliasing**
-Simply put **task aliasing**  allows for the re-use of task definitions within the same workflow under different names, or "aliases". 
-
-## Advantages of aliasing
-
-The major advantages of using task aliasing are:
-
-**1. Reduces Redundancy**: You don't need to copy and paste the same task definition multiple times and your workflows will be more concise and organized. 
-
-**2. Simplifies Maintenance** : If you decide to change/update/fix a task, using task aliasing will make life easy as you need to update only once in your workflow. 
-
-**3. Enhances Readability and Clarity**: A shorter workflow is easier to read but task aliasing also helps to contextualize the workflow ( for example are you doing this task for Sample set A or Sample set B)
-
-**4. Facilitates Modular Workflow Design**: Task aliasing help to make your workflow modular. This is easier to adopt by 
-
-**5. Improves Workflow Scalability**: Using task aliasing it is much easier to scale the workflow across different inputs. For example you want to run a task on different sample groups (Sample set A and B) will allow the same task to be run parallely and if you choose with different modifications. 
-
-**6. Ensures Consistency**: Task aliasing assures that there is consistency in replicated tasks and helps the reader easily identify where changes are expected in a task. 
-
-## Start to add a task alias
-
-You can only alias a task that is already defined, so we will start with the BwaMem task rather than writing a new one.
-
-> Note: In the real world, typically two samples would be processed from a patient: One tumor and one normal. However, we are writing a workflow that only takes in one normal sample and multiple tumor samples. This implies that we have taken multiple tumor samples from the same patient, and we're comparing all of them against a single normal sample.
-
-Here we are creating an alias for the task BwaMem. We want to do this so it can run this task on the "normal" samples and store them seperately. 
-
-First, make sure that in your workflow input, you reference to the normal samples as input.
-
-```
-workflow mutation_calling {
-  input {
-    ...
-    File normalSamples
-...
-  }
-```
-
-Next all that you need to do is `call` the `task` you want to alias and use `as` to the `alias_of_your_choice`. 
-
-But don't forget to make sure that all the inputs reflect actually different things we want to run this task on.
-
-In this case we will be using a different sample and therefore the input_fastq is directed to the appropriate file source. 
-
-## Add the task alias
-
-```
-  call BwaMem as normalBwaMem {
-    input:
-      input_fastq = normalSamples,
-      refGenome = refGenome
-  }
-```
-
-## Modify your output
-
- And finally you will also want to make sure that in your outputs section you are saving the appropriate outputs to reflect the task alias. 
-
-```
-output {
-File normalalignedBamSorted = normalBwaMem.analysisReadySorted
-}
-```
-
-## Alias for other tasks
-
-We can do this for the other two tasks in our workflow as well
-
-```
-call MarkDuplicates as normalMarkDuplicates {
-    input:
-      input_bam = normalBwaMem.analysisReadySorted
-  }
-
-  call ApplyBaseRecalibrator as normalApplyBaseRecalibrator {
-    input:
-      input_bam = normalMarkDuplicates.markDuplicates_bam,
-      input_bam_index = normalMarkDuplicates.markDuplicates_bai,
-      dbSNP_vcf = dbSNP_vcf,
-      dbSNP_vcf_index = dbSNP_vcf_index,
-      known_indels_sites_VCFs = known_indels_sites_VCFs,
-      known_indels_sites_indices = known_indels_sites_indices,
-      refGenome = refGenome
-  }
-```
-
-Now adding these steps to the workflow we will have our tumor and normal sample aligned and recalibrated and suitable for ingestion into the mutation calling step for a paired mutation calling using MuTect2. 
-
-```
 version 1.0
 ## WDL 101 example workflow
 ## 
@@ -130,68 +33,25 @@ struct referenceGenome {
 
 workflow mutation_calling {
   input {
-    Array[File] tumorFastq
+    Array[File] tumorSamples
     File normalFastq
 
     referenceGenome refGenome
     
+    # Files for specific tools
     File dbSNP_vcf
     File dbSNP_vcf_index
     File known_indels_sites_VCFs
     File known_indels_sites_indices
-    
     File af_only_gnomad
     File af_only_gnomad_index
-    
+
+    # Annovar options
     String annovar_protocols
     String annovar_operation
   }
- 
-  # Scatter for "tumor" samples   
-  scatter (tumorSamples in tumorFastq) {
-    call BwaMem as tumorBwaMem {
-      input:
-        input_fastq = tumorSamples,
-        refGenome = refGenome
-    }
-    
-    call MarkDuplicates as tumorMarkDuplicates {
-      input:
-        input_bam = tumorBwaMem.analysisReadySorted
-    }
 
-    call ApplyBaseRecalibrator as tumorApplyBaseRecalibrator{
-      input:
-        input_bam = tumorMarkDuplicates.markDuplicates_bam,
-        input_bam_index = tumorMarkDuplicates.markDuplicates_bai,
-        dbSNP_vcf = dbSNP_vcf,
-        dbSNP_vcf_index = dbSNP_vcf_index,
-        known_indels_sites_VCFs = known_indels_sites_VCFs,
-        known_indels_sites_indices = known_indels_sites_indices,
-        refGenome = refGenome
-      }
-
-    call Mutect2Paired {
-    input:
-      tumor_bam = tumorApplyBaseRecalibrator.recalibrated_bam,
-      tumor_bam_index = tumorApplyBaseRecalibrator.recalibrated_bai,
-      normal_bam = normalApplyBaseRecalibrator.recalibrated_bam,
-      normal_bam_index = normalApplyBaseRecalibrator.recalibrated_bai,
-      refGenome = refGenome,
-      genomeReference = af_only_gnomad,
-      genomeReferenceIndex = af_only_gnomad_index
-  }
-
-  call annovar {
-    input:
-      input_vcf = Mutect2Paired.output_vcf,
-      ref_name = refGenome.ref_name,
-      annovar_operation = annovar_operation,
-      annovar_protocols = annovar_protocols
-  }
-}
-  
-  # Do for normal sample
+  # First, process the non-tumor normal sample
   call BwaMem as normalBwaMem {
     input:
       input_fastq = normalFastq,
@@ -213,7 +73,50 @@ workflow mutation_calling {
       known_indels_sites_indices = known_indels_sites_indices,
       refGenome = refGenome
   }
+ 
+  # Scatter for "tumor" samples   
+  scatter (tumorSample in tumorSamples) {
+    call BwaMem as tumorBwaMem {
+      input:
+        input_fastq = tumorSample,
+        refGenome = refGenome
+    }
+    
+    call MarkDuplicates as tumorMarkDuplicates {
+      input:
+        input_bam = tumorBwaMem.analysisReadySorted
+    }
 
+    call ApplyBaseRecalibrator as tumorApplyBaseRecalibrator{
+      input:
+        input_bam = tumorMarkDuplicates.markDuplicates_bam,
+        input_bam_index = tumorMarkDuplicates.markDuplicates_bai,
+        dbSNP_vcf = dbSNP_vcf,
+        dbSNP_vcf_index = dbSNP_vcf_index,
+        known_indels_sites_VCFs = known_indels_sites_VCFs,
+        known_indels_sites_indices = known_indels_sites_indices,
+        refGenome = refGenome
+      }
+
+    call Mutect2Paired {
+      input:
+        tumor_bam = tumorApplyBaseRecalibrator.recalibrated_bam,
+        tumor_bam_index = tumorApplyBaseRecalibrator.recalibrated_bai,
+        normal_bam = normalApplyBaseRecalibrator.recalibrated_bam,
+        normal_bam_index = normalApplyBaseRecalibrator.recalibrated_bai,
+        refGenome = refGenome,
+        genomeReference = af_only_gnomad,
+        genomeReferenceIndex = af_only_gnomad_index
+    }
+
+  call annovar {
+    input:
+      input_vcf = Mutect2Paired.output_vcf,
+      ref_name = refGenome.ref_name,
+      annovar_operation = annovar_operation,
+      annovar_protocols = annovar_protocols
+  }
+}
 
   output {
     Array[File] tumoralignedBamSorted = tumorBwaMem.analysisReadySorted
@@ -233,8 +136,8 @@ workflow mutation_calling {
   }
 
   parameter_meta {
-    tumorFastq: "Sample tumor .fastq (expects Illumina) in array"
-    normalFastq: "Sample normal .fastq (expects Illumina)"
+    tumorSamples: "Tumor .fastq, one sample per .fastq file (expects Illumina)"
+    normalFastq: "Non-tumor .fastq (expects Illumina)"
 
     dbSNP_vcf: "dbSNP VCF for mutation calling"
     dbSNP_vcf_index: "dbSNP VCF index"
@@ -248,9 +151,9 @@ workflow mutation_calling {
   }
 }
 
-
-
-# TASK DEFINITIONS
+####################
+# Task definitions #
+####################
 
 # Align fastq file to the reference genome
 task BwaMem {
@@ -264,8 +167,7 @@ task BwaMem {
 
   String read_group_id = "ID:" + base_file_name
   String sample_name = "SM:" + base_file_name
-  String platform = "illumina"
-  String platform_info = "PL:" + platform   # Create the platform information
+  String platform_info = "PL:illumina"
 
 
   command <<<
@@ -298,7 +200,7 @@ task BwaMem {
   }
 }
 
-# Mark duplicates 
+# Mark duplicates on a BAM file
 task MarkDuplicates {
   input {
     File input_bam
@@ -396,8 +298,7 @@ task ApplyBaseRecalibrator {
   }
 }
 
-# Mutect 2 calling tumor-normal
-
+# Variant calling via mutect2 (tumor-and-normal mode)
 task Mutect2Paired {
   input {
     File tumor_bam
@@ -410,7 +311,6 @@ task Mutect2Paired {
   }
 
   String base_file_name_tumor = basename(tumor_bam, ".recal.bam")
-  String base_file_name_normal = basename(normal_bam, ".recal.bam")
   String ref_fasta_local = basename(refGenome.ref_fasta)
   String genomeReference_local = basename(genomeReference)
 
@@ -451,7 +351,7 @@ task Mutect2Paired {
   }
 }
 
-# annotate with annovar mutation calling outputs
+# Annotate VCF using annovar
 task annovar {
   input {
     File input_vcf
@@ -482,6 +382,3 @@ task annovar {
     File output_annotated_table = "${base_vcf_name}.${ref_name}_multianno.txt"
   }
 }
-
-```
-
