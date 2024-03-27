@@ -242,7 +242,7 @@ Simply put <strong>task aliasing</strong> allows for the re-use of task definiti
 <blockquote>
 <p>Note: In the real world, typically two samples would be processed from a patient: One tumor and one normal. However, we are writing a workflow that only takes in one normal sample and multiple tumor samples. This implies that we have taken multiple tumor samples from the same patient, and we’re comparing all of them against a single normal sample.</p>
 </blockquote>
-<p>Here we are creating an alias for the task BwaMem. We want to do this so it can run this task on the “normal” samples and store them seperately.</p>
+<p>Here we are creating an alias for the task BwaMem. We want to do this so it can run this task on the “normal” samples and store them separately.</p>
 <p>First, make sure that in your workflow input, you reference to the normal samples as input.</p>
 <pre><code>workflow mutation_calling {
   input {

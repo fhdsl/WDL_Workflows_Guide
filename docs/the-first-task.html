@@ -291,7 +291,7 @@
 }</code></pre>
 <p>Heredoc-style syntax for command sections can be clearer than the alternative, as it makes a clearer distinction between bash variables and WDL variables. This is especially helpful for complicated bash scripts. Heredoc-style syntax is also what the WDL 1.1 spec recommends using in most cases. However, the older non-heredoc style is still perfectly functional for a lot of use cases.</p>
 </details>
-<p>To prevent issues with spaces in String and File types, it is often a good idea to put quotation marks around a String or File variabls, like so:</p>
+<p>To prevent issues with spaces in String and File types, it is often a good idea to put quotation marks around a String or File variables, like so:</p>
 <pre><code>task cowsay {
   input {
     String some_string
