@@ -21,12 +21,13 @@ struct referenceGenome {
     String ref_name
 }
 
-workflow minidata_mutation_calling_v1 {
+workflow mutation_calling {
   input {
     File sampleFastq
     referenceGenome refGenome
     ...
   }
+    
   # Map reads to reference
   call BwaMem {
     input:
@@ -34,6 +35,7 @@ workflow minidata_mutation_calling_v1 {
       refGenome = refGenome
   }
 }
+  
 ```
 
 The `referenceGenome` struct contains all the variables related to the reference genome, but values cannot be defined here. The struct definition merely lays the skeleton components of the data structure, but contains no actual values.
@@ -44,7 +46,7 @@ To give values to `refGenome`, we need to modify our JSON metadata file. We defi
 
 ```         
 {
-  "minidata_mutation_calling_v1.refGenome": {
+  "mutation_calling.refGenome": {
     "ref_fasta": "/fh/fast/paguirigan_a/pub/ReferenceDataSets/genome_data/human/hg19/Homo_sapiens_assembly19.fasta",
     "ref_fasta_index": "/fh/fast/paguirigan_a/pub/ReferenceDataSets/genome_data/human/hg19/Homo_sapiens_assembly19.fasta.fai",
     "ref_dict": "/fh/fast/paguirigan_a/pub/ReferenceDataSets/genome_data/human/hg19/Homo_sapiens_assembly19.dict",
@@ -55,7 +57,7 @@ To give values to `refGenome`, we need to modify our JSON metadata file. We defi
     "ref_bwt": "/fh/fast/paguirigan_a/pub/ReferenceDataSets/genome_data/human/hg19/Homo_sapiens_assembly19.fasta.bwt",
     "ref_name": "hg19"
   },
-  "minidata_mutation_calling_v1.dbSNP_vcf_index": "/fh/fast/paguirigan_a/pub/ReferenceDataSets/genome_data/human/hg19/dbsnp_138.b37.vcf.gz.tbi",
+  "mutation_calling.dbSNP_vcf_index": "/fh/fast/paguirigan_a/pub/ReferenceDataSets/genome_data/human/hg19/dbsnp_138.b37.vcf.gz.tbi",
   ...
 }
 ```
@@ -67,6 +69,8 @@ In addition, we have replaced all the reference genome inputs in call `BwaMem` w
 Within the `BwaMem` task, we must refer to variables inside the struct, such as `refGenome.ref_name` (which has a value of "hg19" using this JSON metadata):
 
 ```         
+
+# Align fastq file to the reference genome
 task BwaMem {
   input {
     File input_fastq
@@ -85,7 +89,6 @@ task BwaMem {
   command <<<
     set -eo pipefail
 
-    #can we iterate through a struct??
     mv ~{refGenome.ref_fasta} .
     mv ~{refGenome.ref_fasta_index} .
     mv ~{refGenome.ref_dict} .
@@ -109,7 +112,7 @@ task BwaMem {
   runtime {
     memory: "48 GB"
     cpu: 16
-    docker: "fredhutch/bwa:0.7.17"
+    docker: "ghcr.io/getwilds/bwa:0.7.17"
   }
 }
 ```
@@ -121,7 +124,6 @@ Other tasks in the workflow, such as `ApplyBaseRecalibrator` and `Mutect2TumorOn
     input:
       input_vcf = Mutect2TumorOnly.output_vcf,
       ref_name = refGenome.ref_name,
-      annovarTAR = annovarTAR,
       annovar_operation = annovar_operation,
       annovar_protocols = annovar_protocols
   }
@@ -130,6 +132,8 @@ Other tasks in the workflow, such as `ApplyBaseRecalibrator` and `Mutect2TumorOn
 Putting everything together in the workflow:
 
 ```         
+version 1.0
+
 struct referenceGenome {
     File ref_fasta
     File ref_fasta_index
@@ -142,7 +146,7 @@ struct referenceGenome {
     String ref_name
 }
 
-workflow minidata_mutation_calling_v1 {
+workflow mutation_calling {
   input {
     File sampleFastq
 
@@ -156,7 +160,6 @@ workflow minidata_mutation_calling_v1 {
     File af_only_gnomad
     File af_only_gnomad_index
     
-    File annovarTAR
     String annovar_protocols
     String annovar_operation
   }
@@ -197,7 +200,6 @@ workflow minidata_mutation_calling_v1 {
       input:
         input_vcf = Mutect2TumorOnly.output_vcf,
         ref_name = refGenome.ref_name,
-        annovarTAR = annovarTAR,
         annovar_operation = annovar_operation,
         annovar_protocols = annovar_protocols
     }
@@ -214,8 +216,22 @@ workflow minidata_mutation_calling_v1 {
     File Mutect_AnnotatedVcf = annovar.output_annotated_vcf
     File Mutect_AnnotatedTable = annovar.output_annotated_table
   }
-}
 
+  parameter_meta {
+    sampleFastq: "Sample tumor .fastq (expects Illumina)"
+
+    dbSNP_vcf: "dbSNP VCF for mutation calling"
+    dbSNP_vcf_index: "dbSNP VCF index"
+    known_indels_sites_VCFs: "Known indel site VCF for mutation calling"
+    known_indels_sites_indices: "Known indel site VCF indicies"
+    af_only_gnomad: "gnomAD population allele fraction for mutation calling"
+    af_only_gnomad_index: "gnomAD population allele fraction index"
+
+    annovar_protocols: "annovar protocols: see https://annovar.openbioinformatics.org/en/latest/user-guide/startup"
+    annovar_operation: "annovar operation: see https://annovar.openbioinformatics.org/en/latest/user-guide/startup"
+  }
+
+}
 
 
 
@@ -242,7 +258,6 @@ task BwaMem {
   command <<<
     set -eo pipefail
 
-    #can we iterate through a struct??
     mv ~{refGenome.ref_fasta} .
     mv ~{refGenome.ref_fasta_index} .
     mv ~{refGenome.ref_dict} .
@@ -266,41 +281,38 @@ task BwaMem {
   runtime {
     memory: "48 GB"
     cpu: 16
-    docker: "fredhutch/bwa:0.7.17"
+    docker: "ghcr.io/getwilds/bwa:0.7.17"
   }
 }
 
-# Mark duplicates (not SPARK, for some reason that does something weird)
+# Mark duplicates
 task MarkDuplicates {
   input {
     File input_bam
   }
 
   String base_file_name = basename(input_bam, ".sorted_query_aligned.bam")
-  String output_bam = "~{base_file_name}.duplicates_marked.bam"
-  String output_bai = "~{base_file_name}.duplicates_marked.bai"
-  String metrics_file = "~{base_file_name}.duplicate_metrics"
 
   command <<<
     gatk MarkDuplicates \
       --INPUT ~{input_bam} \
-      --OUTPUT ~{output_bam} \
-      --METRICS_FILE ~{metrics_file} \
+      --OUTPUT ~{base_file_name}.duplicates_marked.bam \
+      --METRICS_FILE ~{base_file_name}.duplicate_metrics \
       --CREATE_INDEX true \
       --OPTICAL_DUPLICATE_PIXEL_DISTANCE 100 \
       --VALIDATION_STRINGENCY SILENT
   >>>
 
   runtime {
-    docker: "broadinstitute/gatk:4.1.4.0"
+    docker: "ghcr.io/getwilds/gatk:4.3.0.0"
     memory: "48 GB"
     cpu: 4
   }
 
   output {
-    File markDuplicates_bam = "~{output_bam}"
-    File markDuplicates_bai = "~{output_bai}"
-    File duplicate_metrics = "~{metrics_file}"
+    File markDuplicates_bam = "~{base_file_name}.duplicates_marked.bam"
+    File markDuplicates_bai = "~{base_file_name}.duplicates_marked.bai"
+    File duplicate_metrics = "~{base_file_name}.duplicates_marked.bai"
   }
 }
 
@@ -336,7 +348,7 @@ task ApplyBaseRecalibrator {
   mv ~{known_indels_sites_VCFs} .
   mv ~{known_indels_sites_indices} .
 
-  samtools index ~{input_bam} #redundant? markduplicates already does this?
+  samtools index ~{input_bam}
 
   gatk --java-options "-Xms8g" \
       BaseRecalibrator \
@@ -367,7 +379,7 @@ task ApplyBaseRecalibrator {
   runtime {
     memory: "36 GB"
     cpu: 2
-    docker: "broadinstitute/gatk:4.1.4.0"
+    docker: "ghcr.io/getwilds/gatk:4.3.0.0"
   }
 }
 
@@ -413,7 +425,7 @@ command <<<
 >>>
 
 runtime {
-    docker: "broadinstitute/gatk:4.1.4.0"
+    docker: "ghcr.io/getwilds/gatk:4.3.0.0"
     memory: "24 GB"
     cpu: 1
   }
@@ -433,7 +445,6 @@ task annovar {
   input {
   File input_vcf
   String ref_name
-  File annovarTAR
   String annovar_protocols
   String annovar_operation
 }
@@ -441,9 +452,7 @@ task annovar {
   
   command <<<
   set -eo pipefail
-  
-  tar -xzvf ~{annovarTAR}
-  
+    
   perl annovar/table_annovar.pl ~{input_vcf} annovar/humandb/ \
     -buildver ~{ref_name} \
     -outfile ~{base_vcf_name} \
@@ -453,7 +462,7 @@ task annovar {
     -nastring . -vcfinput
 >>>
   runtime {
-    docker : "perl:5.28.0"
+    docker: "ghcr.io/getwilds/annovar:${ref_name}"
     cpu: 1
     memory: "2GB"
   }

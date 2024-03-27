@@ -269,7 +269,7 @@ struct referenceGenome {
 }
 
 
-workflow minidata_mutation_calling_chapter6 {
+workflow mutation_calling {
   input {
     Array[File] tumorSamples
 
@@ -279,17 +279,19 @@ workflow minidata_mutation_calling_chapter6 {
     File dbSNP_vcf_index
     File known_indels_sites_VCFs
     File known_indels_sites_indices
-
+    ...
   }
+  ...
+}
 </code></pre>
 <p>Next, we will want to look at our chain of tasks. Each of these tasks are designed to take in a single sample. In theory, we could rewrite each task to iterate through an array of multiple samples. However, it’s much simpler to keep those tasks as single-sample tasks, and simply run them on one sample at a time. To do this, we encapsulate the task calls in the workflow document with <code>scatter</code>.</p>
-<pre><code>  scatter (tumorFastq in tumorSamples) {
+<pre><code>
+  scatter (tumorFastq in tumorSamples) {
     call BwaMem as tumorBwaMem {
       input:
         input_fastq = tumorFastq,
         refGenome = refGenome
     }
-    
     call MarkDuplicates as tumorMarkDuplicates {
       input:
         input_bam = tumorBwaMem.analysisReadySorted
@@ -355,9 +357,6 @@ workflow minidata_mutation_calling_chapter6 {
 <h2><span class="header-section-number">6.5</span> The workflow so far</h2>
 <pre><code>version 1.0
 
-## Workflow developed by Sitapriya Moorthi @ Fred Hutch LMD: 01/10/24 for use by DaSL @ Fred Hutch.
-## Workflow updated on: 02/28/24 by Ash O&#39;Farrell (UCSC)
-
 struct referenceGenome {
     File ref_fasta
     File ref_fasta_index
@@ -371,7 +370,7 @@ struct referenceGenome {
 }
 
 
-workflow minidata_mutation_calling_chapter6 {
+workflow mutation_calling {
   input {
     Array[File] tumorSamples
 
@@ -381,7 +380,6 @@ workflow minidata_mutation_calling_chapter6 {
     File dbSNP_vcf_index
     File known_indels_sites_VCFs
     File known_indels_sites_indices
-
   }
  
   # Scatter for tumor samples   
@@ -392,15 +390,15 @@ workflow minidata_mutation_calling_chapter6 {
         refGenome = refGenome
     }
     
-    call MarkDuplicates as tumorMarkDuplicates {
+    call MarkDuplicates {
       input:
         input_bam = tumorBwaMem.analysisReadySorted
     }
 
-    call ApplyBaseRecalibrator as tumorApplyBaseRecalibrator{
+    call ApplyBaseRecalibrator{
       input:
-        input_bam = tumorMarkDuplicates.markDuplicates_bam,
-        input_bam_index = tumorMarkDuplicates.markDuplicates_bai,
+        input_bam = MarkDuplicates.markDuplicates_bam,
+        input_bam_index = MarkDuplicates.markDuplicates_bai,
         dbSNP_vcf = dbSNP_vcf,
         dbSNP_vcf_index = dbSNP_vcf_index,
         known_indels_sites_VCFs = known_indels_sites_VCFs,
@@ -411,12 +409,19 @@ workflow minidata_mutation_calling_chapter6 {
 
   output {
     Array[File] tumoralignedBamSorted = tumorBwaMem.analysisReadySorted
-    Array[File] tumorMarkDuplicates_bam = tumorMarkDuplicates.markDuplicates_bam
-    Array[File] tumorMarkDuplicates_bai = tumorMarkDuplicates.markDuplicates_bai
-    Array[File] tumoranalysisReadyBam = tumorApplyBaseRecalibrator.recalibrated_bam 
-    Array[File] tumoranalysisReadyIndex = tumorApplyBaseRecalibrator.recalibrated_bai
+    Array[File] tumorMarkDuplicates_bam = MarkDuplicates.markDuplicates_bam
+    Array[File] tumorMarkDuplicates_bai = MarkDuplicates.markDuplicates_bai
+    Array[File] tumoranalysisReadyBam = ApplyBaseRecalibrator.recalibrated_bam 
+    Array[File] tumoranalysisReadyIndex = ApplyBaseRecalibrator.recalibrated_bai
+  }
+
+  parameter_meta {
+    tumorSamples: &quot;Sample tumor .fastq (expects Illumina) in array&quot;
   }
 }
+
+
+
 # TASK DEFINITIONS
 
 # Align fastq file to the reference genome
@@ -424,7 +429,6 @@ task BwaMem {
   input {
     File input_fastq
     referenceGenome refGenome
-    Int threads = 16
   }
   
   String base_file_name = basename(input_fastq, &quot;.fastq&quot;)
@@ -449,7 +453,7 @@ task BwaMem {
     mv ~{refGenome.ref_sa} .
 
     bwa mem \
-      -p -v 3 -t ~{threads} -M -R &#39;@RG\t~{read_group_id}\t~{sample_name}\t~{platform_info}&#39; \
+      -p -v 3 -t 16 -M -R &#39;@RG\t~{read_group_id}\t~{sample_name}\t~{platform_info}&#39; \
       ~{ref_fasta_local} ~{input_fastq} &gt; ~{base_file_name}.sam 
     samtools view -1bS -@ 15 -o ~{base_file_name}.aligned.bam ~{base_file_name}.sam
     samtools sort -@ 15 -o ~{base_file_name}.sorted_query_aligned.bam ~{base_file_name}.aligned.bam
@@ -473,15 +477,12 @@ task MarkDuplicates {
   }
 
   String base_file_name = basename(input_bam, &quot;.sorted_query_aligned.bam&quot;)
-  String output_bam = &quot;~{base_file_name}.duplicates_marked.bam&quot;
-  String output_bai = &quot;~{base_file_name}.duplicates_marked.bai&quot;
-  String metrics_file = &quot;~{base_file_name}.duplicate_metrics&quot;
 
   command &lt;&lt;&lt;
     gatk MarkDuplicates \
       --INPUT ~{input_bam} \
-      --OUTPUT ~{output_bam} \
-      --METRICS_FILE ~{metrics_file} \
+      --OUTPUT ~{base_file_name}.duplicates_marked.bam \
+      --METRICS_FILE ~{base_file_name}.duplicate_metrics \
       --CREATE_INDEX true \
       --OPTICAL_DUPLICATE_PIXEL_DISTANCE 100 \
       --VALIDATION_STRINGENCY SILENT
@@ -494,11 +495,12 @@ task MarkDuplicates {
   }
 
   output {
-    File markDuplicates_bam = &quot;~{output_bam}&quot;
-    File markDuplicates_bai = &quot;~{output_bai}&quot;
-    File duplicate_metrics = &quot;~{metrics_file}&quot;
+    File markDuplicates_bam = &quot;~{base_file_name}.duplicates_marked.bam&quot;
+    File markDuplicates_bai = &quot;~{base_file_name}.duplicates_marked.bai&quot;
+    File duplicate_metrics = &quot;~{base_file_name}.duplicates_marked.bai&quot;
   }
 }
+
 
 # Base quality recalibration
 task ApplyBaseRecalibrator {
@@ -532,7 +534,7 @@ task ApplyBaseRecalibrator {
   mv ~{known_indels_sites_VCFs} .
   mv ~{known_indels_sites_indices} .
 
-  samtools index ~{input_bam} #redundant? markduplicates already does this?
+  samtools index ~{input_bam}
 
   gatk --java-options &quot;-Xms8g&quot; \
       BaseRecalibrator \
@@ -553,7 +555,7 @@ task ApplyBaseRecalibrator {
 
   #finds the current sort order of this bam file
   samtools view -H ~{base_file_name}.recal.bam | grep @SQ | sed &#39;s/@SQ\tSN:\|LN://g&#39; &gt; ~{base_file_name}.sortOrder.txt
-&gt;&gt;&gt;
+  &gt;&gt;&gt;
 
   output {
     File recalibrated_bam = &quot;~{base_file_name}.recal.bam&quot;

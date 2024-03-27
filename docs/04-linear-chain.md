@@ -29,7 +29,7 @@ The File variables `analysisReadyBam` and `analysisReadySorted` can now be acces
 
 
 ```         
-workflow minidata_mutation_calling_v1 {
+workflow mutation_calling {
   input {
     # Sample info
     File sampleFastq
@@ -44,7 +44,8 @@ workflow minidata_mutation_calling_v1 {
     File ref_sa
   }
     
-  # Map reads to reference
+
+  #  Map reads to reference
   call BwaMem {
     input:
       input_fastq = sampleFastq,
@@ -57,7 +58,7 @@ workflow minidata_mutation_calling_v1 {
       ref_pac = ref_pac,
       ref_sa = ref_sa
   }
-  
+   
   call MarkDuplicates {
     input:
       input_bam = BwaMem.analysisReadySorted
@@ -182,7 +183,7 @@ We build out the rest of the tasks in a very similar fashion. Tasks `ApplyBaseRe
 ```         
 version 1.0
 
-workflow minidata_mutation_calling_v1 {
+workflow mutation_calling {
   input {
     # Sample info
     File sampleFastq
@@ -195,16 +196,18 @@ workflow minidata_mutation_calling_v1 {
     File ref_bwt
     File ref_pac
     File ref_sa
+    String ref_name
+
     File dbSNP_vcf
     File dbSNP_vcf_index
     File known_indels_sites_VCFs
     File known_indels_sites_indices
+
     File af_only_gnomad
     File af_only_gnomad_index
-    File annovarTAR
+
     String annovar_protocols
     String annovar_operation
-    String ref_name
   }
     
   # Map reads to reference
@@ -254,7 +257,6 @@ workflow minidata_mutation_calling_v1 {
       input:
         input_vcf = Mutect2TumorOnly.output_vcf,
         ref_name = ref_name,
-        annovarTAR = annovarTAR,
         annovar_operation = annovar_operation,
         annovar_protocols = annovar_protocols
     }
@@ -271,7 +273,33 @@ workflow minidata_mutation_calling_v1 {
     File Mutect_AnnotatedVcf = annovar.output_annotated_vcf
     File Mutect_AnnotatedTable = annovar.output_annotated_table
   }
+
+  parameter_meta {
+    sampleFastq: "Sample tumor .fastq (expects Illumina)"
+
+    ref_fasta: "Reference genome to align reads to"
+    ref_fasta_index: "Reference genome index file (created by bwa index)"
+    ref_dict: "Reference genome dictionary file (created by bwa index)"
+    ref_amb: "Reference genome non-ATCG file (created by bwa index)"
+    ref_ann: "Reference genome ref seq annotation file (created by bwa index)"
+    ref_bwt: "Reference genome binary file (created by bwa index)"
+    ref_pac: "Reference genome binary file (created by bwa index)"
+    ref_sa: "Reference genome binary file (created by bwa index)"
+    ref_name: "Reference genome name (hg19, hg37, etc.)"
+
+    dbSNP_vcf: "dbSNP VCF for mutation calling"
+    dbSNP_vcf_index: "dbSNP VCF index"
+    known_indels_sites_VCFs: "Known indel site VCF for mutation calling"
+    known_indels_sites_indices: "Known indel site VCF indicies"
+    af_only_gnomad: "gnomAD population allele fraction for mutation calling"
+    af_only_gnomad_index: "gnomAD population allele fraction index"
+
+    annovar_protocols: "annovar protocols: see https://annovar.openbioinformatics.org/en/latest/user-guide/startup"
+    annovar_operation: "annovar operation: see https://annovar.openbioinformatics.org/en/latest/user-guide/startup"
+  }
 }
+
+
 
 
 
@@ -325,7 +353,7 @@ task BwaMem {
   runtime {
     memory: "48 GB"
     cpu: 16
-    docker: "fredhutch/bwa:0.7.17"
+    docker: "ghcr.io/getwilds/bwa:0.7.17"
   }
 }
 
@@ -348,7 +376,7 @@ task MarkDuplicates {
   >>>
 
   runtime {
-    docker: "broadinstitute/gatk:4.1.4.0"
+    docker: "ghcr.io/getwilds/gatk:4.3.0.0"
     memory: "48 GB"
     cpu: 4
   }
@@ -425,7 +453,7 @@ task ApplyBaseRecalibrator {
   runtime {
     memory: "36 GB"
     cpu: 2
-    docker: "broadinstitute/gatk:4.1.4.0"
+    docker: "ghcr.io/getwilds/gatk:4.3.0.0"
   }
 }
 
@@ -472,7 +500,7 @@ command <<<
 >>>
 
 runtime {
-    docker: "broadinstitute/gatk:4.1.4.0"
+    docker: "ghcr.io/getwilds/gatk:4.3.0.0"
     memory: "24 GB"
     cpu: 1
   }
@@ -492,7 +520,6 @@ task annovar {
   input {
   File input_vcf
   String ref_name
-  File annovarTAR
   String annovar_protocols
   String annovar_operation
 }
@@ -501,7 +528,6 @@ task annovar {
   command <<<
   set -eo pipefail
   
-  tar -xzvf ~{annovarTAR}
   
   perl annovar/table_annovar.pl ~{input_vcf} annovar/humandb/ \
     -buildver ~{ref_name} \
@@ -512,7 +538,7 @@ task annovar {
     -nastring . -vcfinput
 >>>
   runtime {
-    docker : "perl:5.28.0"
+    docker : "ghcr.io/getwilds/annovar:${ref_name}"
     cpu: 1
     memory: "2GB"
   }

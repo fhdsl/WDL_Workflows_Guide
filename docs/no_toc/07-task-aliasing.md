@@ -93,9 +93,6 @@ call MarkDuplicates as normalMarkDuplicates {
 Now adding these steps to the workflow we will have our tumor and normal sample aligned and recalibrated and suitable for ingestion into the mutation calling step for a paired mutation calling using MuTect2. 
 
 ```
-
-# The full workflow with task alias
-
 version 1.0
 ## WDL 101 example workflow
 ## 
@@ -131,8 +128,8 @@ struct referenceGenome {
 
 workflow mutation_calling {
   input {
-    Array[File] tumorSamples
-    File normalSamples
+    Array[File] tumorFastq
+    File normalFastq
 
     referenceGenome refGenome
     
@@ -149,10 +146,10 @@ workflow mutation_calling {
   }
  
   # Scatter for "tumor" samples   
-  scatter (tumorFastq in tumorSamples) {
+  scatter (tumorSamples in tumorFastq) {
     call BwaMem as tumorBwaMem {
       input:
-        input_fastq = tumorFastq,
+        input_fastq = tumorSamples,
         refGenome = refGenome
     }
     
@@ -195,7 +192,7 @@ workflow mutation_calling {
   # Do for normal sample
   call BwaMem as normalBwaMem {
     input:
-      input_fastq = normalSamples,
+      input_fastq = normalFastq,
       refGenome = refGenome
   }
   
@@ -232,7 +229,25 @@ workflow mutation_calling {
     Array[File] Mutect2Paired_AnnotatedVcf = annovar.output_annotated_vcf
     Array[File] Mutect2Paired_AnnotatedTable = annovar.output_annotated_table
   }
+
+  parameter_meta {
+    tumorFastq: "Sample tumor .fastq (expects Illumina) in array"
+    normalFastq: "Sample normal .fastq (expects Illumina)"
+
+    dbSNP_vcf: "dbSNP VCF for mutation calling"
+    dbSNP_vcf_index: "dbSNP VCF index"
+    known_indels_sites_VCFs: "Known indel site VCF for mutation calling"
+    known_indels_sites_indices: "Known indel site VCF indicies"
+    af_only_gnomad: "gnomAD population allele fraction for mutation calling"
+    af_only_gnomad_index: "gnomAD population allele fraction index"
+
+    annovar_protocols: "annovar protocols: see https://annovar.openbioinformatics.org/en/latest/user-guide/startup"
+    annovar_operation: "annovar operation: see https://annovar.openbioinformatics.org/en/latest/user-guide/startup"
+  }
 }
+
+
+
 # TASK DEFINITIONS
 
 # Align fastq file to the reference genome
@@ -240,7 +255,6 @@ task BwaMem {
   input {
     File input_fastq
     referenceGenome refGenome
-    Int threads = 16
   }
   
   String base_file_name = basename(input_fastq, ".fastq")
@@ -255,7 +269,6 @@ task BwaMem {
   command <<<
     set -eo pipefail
 
-    #can we iterate through a struct??
     mv ~{refGenome.ref_fasta} .
     mv ~{refGenome.ref_fasta_index} .
     mv ~{refGenome.ref_dict} .
@@ -266,7 +279,7 @@ task BwaMem {
     mv ~{refGenome.ref_sa} .
 
     bwa mem \
-      -p -v 3 -t ~{threads} -M -R '@RG\t~{read_group_id}\t~{sample_name}\t~{platform_info}' \
+      -p -v 3 -t 16 -M -R '@RG\t~{read_group_id}\t~{sample_name}\t~{platform_info}' \
       ~{ref_fasta_local} ~{input_fastq} > ~{base_file_name}.sam 
     samtools view -1bS -@ 15 -o ~{base_file_name}.aligned.bam ~{base_file_name}.sam
     samtools sort -@ 15 -o ~{base_file_name}.sorted_query_aligned.bam ~{base_file_name}.aligned.bam
@@ -283,22 +296,19 @@ task BwaMem {
   }
 }
 
-# Mark duplicates (not SPARK, for some reason that does something weird)
+# Mark duplicates 
 task MarkDuplicates {
   input {
     File input_bam
   }
 
   String base_file_name = basename(input_bam, ".sorted_query_aligned.bam")
-  String output_bam = "~{base_file_name}.duplicates_marked.bam"
-  String output_bai = "~{base_file_name}.duplicates_marked.bai"
-  String metrics_file = "~{base_file_name}.duplicate_metrics"
 
   command <<<
     gatk MarkDuplicates \
       --INPUT ~{input_bam} \
-      --OUTPUT ~{output_bam} \
-      --METRICS_FILE ~{metrics_file} \
+      --OUTPUT ~{base_file_name}.duplicates_marked.bam \
+      --METRICS_FILE ~{base_file_name}.duplicate_metrics \
       --CREATE_INDEX true \
       --OPTICAL_DUPLICATE_PIXEL_DISTANCE 100 \
       --VALIDATION_STRINGENCY SILENT
@@ -311,9 +321,9 @@ task MarkDuplicates {
   }
 
   output {
-    File markDuplicates_bam = "~{output_bam}"
-    File markDuplicates_bai = "~{output_bai}"
-    File duplicate_metrics = "~{metrics_file}"
+    File markDuplicates_bam = "~{base_file_name}.duplicates_marked.bam"
+    File markDuplicates_bai = "~{base_file_name}.duplicates_marked.bai"
+    File duplicate_metrics = "~{base_file_name}.duplicates_marked.bai"
   }
 }
 
@@ -349,7 +359,7 @@ task ApplyBaseRecalibrator {
   mv ~{known_indels_sites_VCFs} .
   mv ~{known_indels_sites_indices} .
 
-  samtools index ~{input_bam} #redundant? markduplicates already does this?
+  samtools index ~{input_bam} 
 
   gatk --java-options "-Xms8g" \
       BaseRecalibrator \
@@ -470,5 +480,6 @@ task annovar {
     File output_annotated_table = "${base_vcf_name}.${ref_name}_multianno.txt"
   }
 }
+
 ```
 
