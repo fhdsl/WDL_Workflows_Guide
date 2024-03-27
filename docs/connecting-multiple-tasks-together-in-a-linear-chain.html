@@ -228,7 +228,7 @@
 <li><code>BwaMem</code> aligns the samples to the reference genome.</li>
 <li><code>MarkDuplicates</code> marks PCR duplicates.</li>
 <li><code>ApplyBaseRecalibrator</code> applies base recalibration.</li>
-<li><code>Mutect2</code> performs somatic mutation calling. For this current iteration, we start with <code>Mutect2TumorOnly</code> which only uses the tumor sample.</li>
+<li><code>Mutect2</code> performs somatic mutation calling. For this current iteration, we start with <code>Mutect2TumorOnly</code> which only uses the tumor sample. Later on, we will switch to a version of mutect that will allow for comparing tumor samples against a non-tumor normal sample.</li>
 <li><code>annovar</code> annotates the called somatic mutations.</li>
 </ol>
 <p>We do this via a <strong>linear chain</strong>, in which we feed the output of one task to the input of the next task. Let’s see how to build a linear chain in a workflow.</p>
